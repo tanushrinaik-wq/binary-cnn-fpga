@@ -1,462 +1,385 @@
-# 🧠 1. What You Set Out to Build (Spec Reality)
+# 🧠 BCNN Accelerator — Phase B Status Report
 
-Your spec defines a **cycle-accurate BCNN accelerator on FPGA** with:
+## 1. Overview
 
-- SPI ingestion (Nicla Vision simulation)
-- Streaming pipeline
-- Binary CNN:
-  - XNOR + popcount only (no multipliers)
+This document provides a **structured evaluation of the RTL implementation (Phase B)** of the BCNN Edge Vision Accelerator, aligned with the requirements defined in `SPEC.md`.
 
-- Two convolution layers (implied by roadmap)
-- BatchNorm folded into thresholds
-- Global pooling + classification
-- FSM-controlled dataflow
-- Benchmarking:
-  - latency
-  - Fmax
-  - GOPS comparison
+The focus is on:
 
-This is not just “some RTL” — it’s a **full accelerator system**.
+- Architectural correctness
+- Hardware design quality
+- FPGA readiness (timing, memory, scalability)
+- Verification completeness
+
+> ⚠ Phase A (ML training, binarization pipeline, .mif generation) is intentionally excluded from this report.
 
 ---
 
-# 🧩 2. What You Actually Built (System-Level View)
+## 2. System Architecture Summary
 
-At this point, your system is:
+The implemented system follows a **fully streaming dataflow pipeline**:
 
-```text
+```
 SPI → FIFO → BIN → LB1 → BCNN_L1 → LB2 → BCNN_L2 → POOL → CLASSIFIER
          ↑                                                     ↓
          └────────────── FSM CONTROLLER ───────────────────────┘
 ```
 
-This is **architecturally correct** and closely matches the intended pipeline.
+### Key Characteristics
 
-That alone is a big milestone — most implementations never reach a clean streaming architecture.
-
----
-
-# 🔍 3. Module-by-Module Deep Evaluation
-
----
-
-## SPI + FIFO Layer (Input Subsystem)
-
-This part is **strong and essentially production-ready**.
-
-You correctly:
-
-- Synchronize SPI signals into system clock domain
-- Use edge detection instead of raw clocking
-- Separate buffering via FIFO
-
-The FIFO design choice (single clock) is **aligned with your SPI synchronization strategy**, so no CDC issues remain.
-
-There are no spec deviations here. This part is **clean, correct, and safe**.
+- **Streaming execution** (no frame-level buffering)
+- **Dataflow-driven pipeline** (compute triggered by valid signals)
+- **Modular RTL design**
+- **No multipliers** (XNOR + popcount only)
 
 ---
 
-## Binarization Stage
+## 3. Phase B Spec Compliance Summary
 
-You implemented binarization inline:
+| Component             | Requirement (SPEC.md)               | Status | Notes                          |
+| --------------------- | ----------------------------------- | ------ | ------------------------------ |
+| SPI Interface         | 4-wire, 20MHz, CDC-safe             | ✅     | Fully compliant                |
+| FIFO                  | CDC buffering                       | ✅     | Single-clock valid alternative |
+| Binarization          | ±1 mapping                          | ⚠️     | Hardcoded threshold            |
+| XNOR + Popcount       | No multipliers, efficient reduction | ⚠️     | Not fully Fmax-optimized       |
+| BCNN Layer (L1)       | Parameterized                       | ⚠️     | Single-channel assumption      |
+| BCNN Layer (L2)       | Multi-channel accumulation          | ⚠️     | Timing-heavy                   |
+| Line Buffer           | Sliding window                      | ✅     | Correct implementation         |
+| FSM Controller        | Orchestrate pipeline                | ✅     | L2-aware and correct           |
+| Memory (BRAM/M4K)     | Use internal block RAM              | ⚠️     | Not guaranteed                 |
+| Top-Level Integration | Full pipeline                       | ✅     | Clean streaming design         |
+| Testbench             | Simulation + latency measurement    | ⚠️     | Partial validation             |
+| Multipliers           | Forbidden                           | ✅     | Fully compliant                |
+| Synchronous Design    | Required                            | ✅     | Fully compliant                |
+
+### Overall Assessment
+
+> ✔ **Functionally complete RTL pipeline**
+> ❗ **Not yet timing-clean or benchmark-complete**
+
+---
+
+## 4. Module-Level Evaluation
+
+---
+
+### 4.1 SPI Interface + FIFO
+
+**What works**
+
+- Proper 2-stage synchronization of SPI signals
+- Edge-based SCK detection
+- Clean byte-level interface (`byte_valid`)
+- FIFO decouples ingestion from compute
+
+**Verdict**
+✔ Fully compliant and production-quality
+
+---
+
+### 4.2 Binarization Stage
+
+**Implementation**
 
 ```verilog
-pixel_bin = (fifo_out > 127)
+pixel_bin = (fifo_out > 127);
 ```
 
-This is **acceptable and spec-compliant**. The spec only requires binarization, not modularization.
+**Assessment**
 
-However, you made a **hardcoded threshold assumption**:
+- Functionally correct
+- Hardcoded threshold
 
-- 127 instead of dataset-driven mean
+**Issue**
 
-This is not “wrong”, but it **decouples hardware from training pipeline**, which matters for accuracy.
+- Not aligned with dataset-driven binarization (training pipeline)
 
----
-
-## Line Buffer 1 (LB1)
-
-Your **final corrected version** is now structurally correct:
-
-- Uses column indexing
-- Uses row buffers (BRAM-compatible)
-- Uses horizontal shift registers
-- Generates valid windows only after warmup
-
-This now **correctly implements sliding window convolution**, which was previously broken.
-
-However:
-
-- It is **not truly BRAM-optimal** yet (array inference depends on Quartus heuristics)
-- No dual-port optimization
-- No explicit pipeline staging
-
-Still, functionally:
-
-> ✅ **Convolution correctness is now restored**
-
-This was the biggest fix in your project.
+**Verdict**
+⚠ Acceptable for RTL, but not ML-consistent
 
 ---
 
-## BCNN Layer 1
+### 4.3 Line Buffer (LB1 & LB2)
 
-This is a **minimal but correct binary convolution layer**.
+**What works**
 
-You correctly:
+- Correct 3×3 sliding window generation
+- Row buffering using BRAM-style arrays
+- Multi-channel support in LB2
+- Proper valid signal generation after warm-up
 
-- Use XNOR for multiplication
-- Use popcount for accumulation
-- Compare against threshold
-
-You also:
-
-- Parameterized kernel size and filters
-- Use ROM-style weights
-
-But:
-
-- It assumes **single input channel**
-- No accumulation across channels
-- No pipeline stages
-- Popcount is partially balanced but not optimal
-
-So:
-
-> ✔ Functionally correct
-> ❗ Architecturally incomplete (only valid for first layer)
+**Verdict**
+✔ Fully correct and spec-compliant
 
 ---
 
-## Multi-Channel Line Buffer (LB2)
+### 4.4 BCNN Layer 1
 
-This is one of your **strongest components**.
+**What works**
 
-You correctly:
+- XNOR-based multiplication
+- Popcount accumulation
+- Threshold-based activation
+- Parameterized kernel size
 
-- Generalized line buffer to vector input
-- Maintain per-channel sliding windows
-- Keep streaming semantics intact
+**Limitations**
 
-This is exactly what’s needed for multi-layer CNNs.
+- Assumes single input channel
+- No cross-channel accumulation
 
-There are no conceptual errors here.
+**Verdict**
+✔ Functionally correct
+⚠ Architecturally limited
 
 ---
 
-## BCNN Layer 2
+### 4.5 BCNN Layer 2
 
-This is where your design becomes a **real CNN**.
-
-You correctly implemented:
+**What works**
 
 - Multi-channel convolution
 - Per-channel popcount
-- Accumulation across channels
+- Cross-channel accumulation
 - Threshold activation
 
-This aligns well with the spec’s intent.
+**Critical Issue**
 
-However, there are **serious hardware concerns**:
+- Fully combinational accumulation:
 
-### 1. Accumulation is fully combinational
-
-You sum:
-
-```text
-IN_CH × popcount outputs
+```verilog
+sum[i] = sum[i] + pc[i][j];
 ```
 
-This creates a **long critical path**:
+**Impact**
 
-```
-XNOR → popcount → multi-input adder → compare
-```
+- Long critical path:
 
-On Cyclone IV:
+  ```
+  XNOR → popcount → multi-input add → compare
+  ```
 
-- This will **limit Fmax significantly**
-- May fail timing at higher frequencies
+- High risk of timing failure on Cyclone IV
 
-### 2. Resource usage is high
-
-- Fully parallel across channels and filters
-- No reuse / tiling
-
-### 3. No pipelining
-
-- Everything in one cycle
-
-So:
-
-> ✔ Functionally correct
-> ⚠️ Performance-risky
-> ❗ Not optimized for FPGA constraints
+**Verdict**
+✔ Functionally correct
+❗ Major timing risk
 
 ---
 
-## Popcount Module
+### 4.6 Popcount Module
 
-You implemented a **semi-balanced tree**.
+**What works**
 
-Good:
+- XNOR stage implemented correctly
+- Multi-level reduction tree
 
-- XNOR stage is correct
-- Partial tree reduces depth
+**Issue**
 
-Weakness:
-
-- Final reduction loop reintroduces linear dependency
-- Not pipelined
-
-This is acceptable for correctness, but:
-
-> ❗ Not aligned with “maximize Fmax” requirement
-
----
-
-## Pool + Classifier
-
-This is actually **very well done conceptually**.
-
-You correctly:
-
-- Accumulate per-channel activations
-- Avoid division (correct optimization)
-- Use argmax
-
-This matches the mathematical equivalence:
-
-```
-argmax(sum) == argmax(mean)
-```
-
-Issues:
-
-- Argmax is fully combinational (timing risk for large channels)
-- Spatial size handling must match L2 output (you fixed this conceptually)
-
-Overall:
-
-> ✔ Correct and spec-aligned
-> ⚠️ Needs minor timing optimization
-
----
-
-## FSM Controller
-
-This is where your design became **properly hardware-engineered**.
-
-You correctly:
-
-- Separate control from datapath
-- Count **valid windows**, not pixels
-- Switch to L2-based counting
-
-This is a **major correctness improvement**.
-
-Also:
-
-- Ignoring `frame_done` is actually correct in a streaming system
-
-This module is now:
-
-> ✔ Architecturally correct
-> ✔ Spec-compliant
-> ✔ Clean and maintainable
-
----
-
-## Accelerator Top
-
-You moved to:
-
-- Fully streaming pipeline
-- Continuous FIFO consumption
-- No artificial staging
-
-This aligns with real accelerator design.
-
-The key design decision here:
-
-> **Dataflow-driven execution instead of phase-driven FSM**
-
-This is absolutely the right call.
-
----
-
-## Testbench + Latency
-
-Your testbench:
-
-- Correctly drives SPI
-- Uses `$readmemh`
-- Measures latency (spec requirement)
-- Prints result
-
-However:
-
-### Major issues:
-
-1. **SPI timing is idealized**
-   - No jitter, no gaps
-   - Doesn’t stress FIFO or CDC
-
-2. **No correctness checking**
-   - No comparison with ground truth
-
-3. **No multiple test cases**
-
-4. **Latency definition is slightly loose**
-   - Starts at CS low, not first valid bit edge
-
-So:
-
-> ✔ Good baseline
-> ❗ Not sufficient for full validation
-
----
-
-# 🚨 4. Where You Deviated from Spec
-
----
-
-## 1. No explicit BRAM-based architecture guarantee
-
-Spec:
-
-> “Use M4K blocks”
-
-You:
-
-- Hint via `ramstyle`
-- But no guaranteed inference
-
----
-
-## 2. No Fmax-driven design
-
-Spec requires:
-
-> “maximize Fmax”
-
-You:
-
+- Final accumulation uses loop-based reduction (not fully balanced)
 - No pipelining
-- Long combinational paths
+
+**Verdict**
+✔ Correct
+⚠ Not optimized for high Fmax
 
 ---
 
-## 3. No GOPS benchmarking yet
+### 4.7 Pooling + Classifier
 
-Spec requires:
+**What works**
 
-- Performance comparison vs MCU
+- Global accumulation per channel
+- Argmax classification
+- Correct avoidance of division (mean ≡ sum for argmax)
 
-You:
+**Issue**
 
-- Only latency measured
+- Argmax implemented as large combinational block
 
----
-
-## 4. No accuracy validation loop
-
-Spec requires:
-
-- Compare with software model
-
-You:
-
-- Not implemented yet
+**Verdict**
+✔ Correct
+⚠ Timing risk at scale
 
 ---
 
-## 5. No explicit dual-clock FIFO (but justified)
+### 4.8 FSM Controller
 
-Spec suggests async FIFO, but your design:
+**What works**
 
-- Synchronizes SPI first → valid alternative
+- Clean separation of control and datapath
+- Tracks L2 outputs (correct abstraction)
+- Proper frame lifecycle management
 
-This is **not a violation**, just a different design choice.
-
----
-
-# 🧠 5. What Is Broken vs What Is Just “Not Optimal”
-
----
-
-### Truly broken (must fix for correctness)
-
-- Nothing fundamental anymore
-  👉 After line buffer fix, **functional correctness is intact**
+**Verdict**
+✔ Fully compliant and well-designed
 
 ---
 
-### Risky / likely to fail in synthesis
+### 4.9 Top-Level Integration
 
-- L2 accumulation timing
-- Popcount depth
-- Argmax fan-in
+**What works**
 
----
+- Clean streaming datapath
+- Continuous FIFO consumption
+- Proper module composition
 
-### Missing for spec completion
+**Limitation**
 
-- Accuracy validation
-- GOPS calculation
-- Proper BRAM verification
-- Multi-image testing
+- No backpressure or stall handling
 
----
-
-# 📊 6. Final Project Snapshot
-
-| Area                | Status | Notes                                |
-| ------------------- | ------ | ------------------------------------ |
-| SPI interface       | ✅     | Clean, synchronized                  |
-| FIFO                | ✅     | Correct, safe                        |
-| Binarization        | ✅     | Simplified threshold                 |
-| Line Buffer L1      | ✅     | Fixed, correct                       |
-| BCNN L1             | ✅     | Single-channel only (correct for L1) |
-| Line Buffer L2      | ✅     | Correct multi-channel                |
-| BCNN L2             | ⚠️     | Correct but timing-heavy             |
-| Popcount            | ⚠️     | Not fully optimized                  |
-| Pool + Classifier   | ⚠️     | Correct, needs timing polish         |
-| FSM                 | ✅     | Correct, L2-aware                    |
-| Top module          | ✅     | Streaming, clean                     |
-| Testbench           | ⚠️     | Works, not rigorous                  |
-| Accuracy validation | ❌     | Missing                              |
-| GOPS benchmarking   | ❌     | Missing                              |
-| BRAM optimization   | ⚠️     | Not guaranteed                       |
-| Timing optimization | ❌     | Not done                             |
+**Verdict**
+✔ Architecturally correct
 
 ---
 
-# 🧠 Final Verdict
+### 4.10 Testbench
 
-You are **past the hardest part**.
+**What works**
 
-> You have built a **correct, end-to-end, streaming BCNN accelerator**.
+- SPI stimulus generation
+- `$readmemh` usage
+- Latency measurement
 
-But:
+**Missing**
 
-- It is **not yet optimized for FPGA constraints**
-- It is **not fully validated**
-- It is **not benchmark-complete**
+- No correctness validation vs ground truth
+- No multi-test coverage
+- Idealized SPI timing (no stress testing)
 
----
-
-# 🧭 If you resume later
-
-Your next steps should be:
-
-1. **Add correctness validation (Python vs RTL)**
-2. **Pipeline popcount + L2 accumulation**
-3. **Verify BRAM inference in Quartus**
-4. **Compute GOPS + compare with MCU**
+**Verdict**
+⚠ Partial validation only
 
 ---
 
-# 🧠 One-line summary
+## 5. Timing & Synthesizability Assessment
 
-> You now have a **functionally correct accelerator**, but to meet the _spirit_ of the spec, you must turn it into a **validated, timing-clean, benchmarked system**.
+### Critical Paths
+
+1. **BCNN Layer 2 accumulation**
+2. **Popcount final reduction**
+3. **Argmax classifier**
+
+### Expected Issues
+
+- Reduced Fmax due to deep combinational paths
+- Potential failure to meet timing on Cyclone IV
+- No pipelining to break critical paths
+
+### Conclusion
+
+> ❗ The design is **functionally correct but not timing-clean**
+
+---
+
+## 6. Memory (BRAM) Compliance
+
+### Current Approach
+
+- Use of:
+
+```verilog
+(* ramstyle = "M4K" *)
+```
+
+### Issue
+
+- This is a **hint**, not a guarantee
+- No explicit dual-port RAM usage
+- No Quartus verification of inference
+
+### Conclusion
+
+> ⚠ BRAM usage is **likely but not guaranteed**
+
+---
+
+## 7. Resource & Scalability Considerations
+
+### Observations
+
+- Fully parallel architecture:
+  - All filters active simultaneously
+  - All channels computed in parallel
+
+### Implications
+
+- High resource usage
+- Poor scalability with:
+  - increasing channels
+  - larger kernels
+
+### Conclusion
+
+> ⚠ Design favors correctness over scalability
+
+---
+
+## 8. Known Risks
+
+- ❗ Timing closure failure (critical)
+- ⚠ BRAM inference uncertainty
+- ⚠ High combinational fan-in (L2 + classifier)
+- ⚠ No pipelining
+- ⚠ No backpressure handling
+
+---
+
+## 9. What Is Verified vs Not Verified
+
+### Verified
+
+- End-to-end dataflow
+- SPI ingestion
+- Window generation
+- Layer execution
+- Latency measurement
+
+### Not Verified
+
+- Output correctness vs reference model
+- Multi-image robustness
+- FIFO stress conditions
+- Timing behavior under realistic load
+
+---
+
+## 10. Final Project Snapshot
+
+| Area              | Status | Notes               |
+| ----------------- | ------ | ------------------- |
+| SPI interface     | ✅     | Clean, synchronized |
+| FIFO              | ✅     | Correct, safe       |
+| Binarization      | ⚠️     | Hardcoded threshold |
+| Line Buffer L1    | ✅     | Correct             |
+| BCNN L1           | ⚠️     | Single-channel      |
+| Line Buffer L2    | ✅     | Correct             |
+| BCNN L2           | ⚠️     | Timing-heavy        |
+| Popcount          | ⚠️     | Not fully optimized |
+| Pool + Classifier | ⚠️     | Timing risk         |
+| FSM               | ✅     | Correct             |
+| Top module        | ✅     | Clean streaming     |
+| Testbench         | ⚠️     | Partial             |
+| BRAM usage        | ⚠️     | Not guaranteed      |
+| Timing readiness  | ❌     | Not achieved        |
+
+---
+
+## 11. Final Verdict
+
+The current system represents:
+
+> ✔ A **functionally correct, end-to-end BCNN accelerator**
+> ❗ But **not yet an FPGA-ready, timing-clean implementation**
+
+### To reach full Phase B completion:
+
+- Add pipelining (popcount + L2 accumulation)
+- Verify BRAM inference in Quartus
+- Improve testbench with correctness validation
+- Reduce critical path depth
+
+---
+
+## 12. One-Line Summary
+
+> A **correct streaming BCNN accelerator**, but not yet a **timing-optimized or fully validated FPGA design**.
