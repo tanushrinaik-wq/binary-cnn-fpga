@@ -57,6 +57,11 @@ module accelerator_top #(
     wire fifo_empty;
 
     // Pipeline always ready in current design, but explicitly defined
+    // NOTE:
+    // pipeline_ready is hardwired to 1 because the entire pipeline is
+    // fully streaming (no stalls, 1 sample/cycle throughput).
+    // If any stage introduces backpressure, this MUST be replaced
+    // with a real ready signal or data loss will occur.
     wire pipeline_ready = 1'b1;
 
     wire fifo_rd = (!fifo_empty) && pipeline_ready;

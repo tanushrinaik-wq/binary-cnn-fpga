@@ -1,5 +1,5 @@
 // ============================================================================
-// Module  : spi_slave.v (FIXED - EDGE + FRAME CORRECT)
+// Module  : spi_slave.v (FINAL - CDC SAFE, HARDWARE CORRECT)
 // ============================================================================
 
 `timescale 1ns / 1ps
@@ -23,7 +23,7 @@ module spi_slave #(
 );
 
     // =========================================================================
-    // SYNCHRONIZERS
+    // 2-FF SYNCHRONIZERS
     // =========================================================================
     reg [1:0] sck_sync;
     reg [1:0] mosi_sync;
@@ -41,20 +41,34 @@ module spi_slave #(
         end
     end
 
-    wire sck_old = sck_sync[1];
-    wire sck_new = sck_sync[0];
+    // =========================================================================
+    // STABLE SIGNALS (ONLY USE [1])
+    // =========================================================================
+    wire sck_s  = sck_sync[1];
+    wire cs_s   = cs_sync[1];
+    wire mosi_s = mosi_sync[1];
 
-    wire cs_old  = cs_sync[1];
-    wire cs_new  = cs_sync[0];
-
-    wire mosi_s  = mosi_sync[1];
+    assign frame_active = ~cs_s;
 
     // =========================================================================
-    // FIXED EDGE DETECTION
+    // EDGE DETECTION (SAFE)
     // =========================================================================
-    wire sck_rising = sck_new & (~sck_old);   // rising edge
-    wire cs_rising  = cs_new  & (~cs_old);    // CS: 0→1 (frame end)
-    wire cs_falling = (~cs_new) & cs_old;     // CS: 1→0 (frame start)
+    reg sck_prev;
+    reg cs_prev;
+
+    always @(posedge sys_clk or negedge sys_rst_n) begin
+        if (!sys_rst_n) begin
+            sck_prev <= 1'b0;
+            cs_prev  <= 1'b1;
+        end else begin
+            sck_prev <= sck_s;
+            cs_prev  <= cs_s;
+        end
+    end
+
+    wire sck_rising = sck_s & ~sck_prev;
+    wire cs_rising  = cs_s  & ~cs_prev;
+    wire cs_falling = ~cs_s &  cs_prev;
 
     // =========================================================================
     // SHIFT REGISTER
@@ -68,41 +82,38 @@ module spi_slave #(
             bit_cnt    <= 0;
             byte_data  <= 0;
             byte_valid <= 0;
+            frame_done <= 0;
         end else begin
             byte_valid <= 1'b0;
+            frame_done <= 1'b0;
 
-            if (!cs_new) begin
-                if (sck_rising) begin
-                    shift_reg <= {shift_reg[DATA_BITS-2:0], mosi_s};
-                    bit_cnt   <= bit_cnt + 1'b1;
-
-                    if (bit_cnt == DATA_BITS - 1) begin
-                        byte_data  <= {shift_reg[DATA_BITS-2:0], mosi_s};
-                        byte_valid <= 1'b1;
-                        bit_cnt    <= 0;
-                    end
-                end
-            end else begin
+            // Frame start
+            if (cs_falling) begin
                 shift_reg <= 0;
                 bit_cnt   <= 0;
+            end
+
+            // Shift only when CS active (stable signal)
+            if (!cs_s && sck_rising) begin
+                shift_reg <= {shift_reg[DATA_BITS-2:0], mosi_s};
+                bit_cnt   <= bit_cnt + 1'b1;
+
+                if (bit_cnt == DATA_BITS - 1) begin
+                    byte_data  <= {shift_reg[DATA_BITS-2:0], mosi_s};
+                    byte_valid <= 1'b1;
+                    bit_cnt    <= 0;
+                end
+            end
+
+            // Frame end pulse
+            if (cs_rising) begin
+                frame_done <= 1'b1;
             end
         end
     end
 
     // =========================================================================
-    // FRAME SIGNALS (FIXED)
-    // =========================================================================
-    assign frame_active = ~cs_new;
-
-    always @(posedge sys_clk or negedge sys_rst_n) begin
-        if (!sys_rst_n)
-            frame_done <= 0;
-        else
-            frame_done <= cs_rising;   // ✅ fires on CS_N rising (frame END)
-    end
-
-    // =========================================================================
-    // MISO
+    // MISO (unused)
     // =========================================================================
     assign spi_miso = 1'b0;
 

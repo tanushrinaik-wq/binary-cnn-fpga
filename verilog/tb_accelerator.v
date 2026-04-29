@@ -148,4 +148,18 @@ module tb_accelerator;
         end
     end
 
+    // =========================================================================
+    // WATCHDOG TIMEOUT (prevents infinite simulation)
+    // =========================================================================
+    initial begin
+        #50_000_000;  // 50 ms @ 1ns timescale = 1M cycles @ 50 MHz
+
+        $display("====================================");
+        $display("WATCHDOG TIMEOUT: valid_out never asserted.");
+        $display("Simulation terminated.");
+        $display("====================================");
+
+        $finish;
+    end
+
 endmodule

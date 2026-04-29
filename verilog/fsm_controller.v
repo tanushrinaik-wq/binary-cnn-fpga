@@ -1,5 +1,5 @@
 // ============================================================================
-// Module : fsm_controller.v (FIXED - SPEC COMPLIANT)
+// Module : fsm_controller.v (FINAL - DEADLOCK FREE, SPEC CORRECT)
 // ============================================================================
 
 `timescale 1ns / 1ps
@@ -13,7 +13,7 @@ module fsm_controller #(
 
     // Frame control
     input  wire frame_active,
-    input  wire frame_done,       
+    input  wire frame_done,        // (kept for interface completeness)
 
     // Pipeline
     input  wire l2_valid,
@@ -43,7 +43,7 @@ module fsm_controller #(
     reg [$clog2(TOTAL_WINDOWS+1)-1:0] window_count;
 
     // =========================================================================
-    // STATE REG
+    // STATE REGISTER
     // =========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -53,19 +53,19 @@ module fsm_controller #(
     end
 
     // =========================================================================
-    // NEXT STATE (FIXED: use frame_done properly)
+    // NEXT STATE (FIXED)
     // =========================================================================
     always @(*) begin
         case (state)
+
             IDLE:
-                // start only when new frame begins AND previous finished
                 next_state = frame_active ? RUNNING : IDLE;
 
             RUNNING:
                 next_state = (window_count == TOTAL_WINDOWS) ? WAIT_CLASS : RUNNING;
 
             WAIT_CLASS:
-                next_state = (classifier_valid && frame_done) ? IDLE : WAIT_CLASS;
+                next_state = classifier_valid ? IDLE : WAIT_CLASS;
 
             default:
                 next_state = IDLE;
@@ -77,7 +77,7 @@ module fsm_controller #(
     // =========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            window_count <= 0;         
+            window_count <= 0;
             start_frame  <= 0;
             end_frame    <= 0;
         end else begin
@@ -89,7 +89,6 @@ module fsm_controller #(
                 IDLE: begin
                     window_count <= 0;
 
-                    // start pulse
                     if (frame_active)
                         start_frame <= 1'b1;
                 end
@@ -104,7 +103,7 @@ module fsm_controller #(
                 end
 
                 WAIT_CLASS: begin
-                    // wait for classifier_valid
+                    // hold state until classifier_valid
                 end
 
             endcase

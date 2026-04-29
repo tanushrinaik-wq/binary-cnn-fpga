@@ -160,9 +160,10 @@ module spi_fifo #(
 // synthesis translate_off
     // Depth power-of-2 check
     initial begin
-        if ((DEPTH & (DEPTH - 1)) != 0)
+        if ((DEPTH & (DEPTH - 1)) != 0) begin
             $display("ERROR: spi_fifo DEPTH=%0d is not a power of 2.", DEPTH);
             $finish;
+        end
     end
 
     // Runtime overflow/underflow monitors
