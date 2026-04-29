@@ -1,8 +1,5 @@
 // ============================================================================
-// Module : line_buffer.v (FINAL SPEC-COMPLIANT)
-// Description:
-//   True 3x3 sliding window generator
-//   BRAM-friendly row buffers + shift registers
+// Module : line_buffer.v (FIXED - NO SKEW)
 // ============================================================================
 
 `timescale 1ns / 1ps
@@ -13,36 +10,42 @@ module line_buffer #(
     input  wire clk,
     input  wire rst_n,
 
-    // Input stream
     input  wire valid_in,
-    input  wire pixel_in,   // 1-bit
+    input  wire pixel_in,
 
-    // Output
     output reg  valid_out,
     output reg  [8:0] window_out
 );
 
     // =========================================================================
-    // 1. Column counter
+    // COLUMN COUNTER
     // =========================================================================
     reg [$clog2(IMG_WIDTH)-1:0] col;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             col <= 0;
-        else if (valid_in) begin
-            if (col == IMG_WIDTH - 1)
-                col <= 0;
-            else
-                col <= col + 1;
-        end
+        else if (valid_in)
+            col <= (col == IMG_WIDTH-1) ? 0 : col + 1;
     end
 
     // =========================================================================
-    // 2. Row buffers (BRAM-friendly)
+    // INPUT DELAY (FIX: ALIGN WITH BRAM LATENCY)
     // =========================================================================
-    (* ramstyle = "M4K" *) reg row_buf1 [0:IMG_WIDTH-1]; // N-1
-    (* ramstyle = "M4K" *) reg row_buf2 [0:IMG_WIDTH-1]; // N-2
+    reg pixel_in_d;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            pixel_in_d <= 0;
+        else if (valid_in)
+            pixel_in_d <= pixel_in;
+    end
+
+    // =========================================================================
+    // ROW BUFFERS
+    // =========================================================================
+    (* ramstyle = "M4K" *) reg row_buf1 [0:IMG_WIDTH-1];
+    (* ramstyle = "M4K" *) reg row_buf2 [0:IMG_WIDTH-1];
 
     reg row1_data, row2_data;
 
@@ -57,11 +60,9 @@ module line_buffer #(
     end
 
     // =========================================================================
-    // 3. Horizontal shift registers (window columns)
+    // SHIFT REGISTERS (FIXED: USE DELAYED INPUT)
     // =========================================================================
-    reg [2:0] shift_row0;
-    reg [2:0] shift_row1;
-    reg [2:0] shift_row2;
+    reg [2:0] shift_row0, shift_row1, shift_row2;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -69,37 +70,46 @@ module line_buffer #(
             shift_row1 <= 0;
             shift_row2 <= 0;
         end else if (valid_in) begin
-            shift_row0 <= {shift_row0[1:0], pixel_in};
+            shift_row0 <= {shift_row0[1:0], pixel_in_d};
             shift_row1 <= {shift_row1[1:0], row1_data};
             shift_row2 <= {shift_row2[1:0], row2_data};
         end
     end
 
     // =========================================================================
-    // 4. Row counter (to know when enough rows are filled)
+    // ROW COUNT
     // =========================================================================
     reg [$clog2(IMG_WIDTH):0] row_count;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             row_count <= 0;
-        else if (valid_in && col == IMG_WIDTH - 1)
+        else if (valid_in && col == IMG_WIDTH-1)
             row_count <= row_count + 1;
     end
 
     // =========================================================================
-    // 5. Valid generation
+    // VALID (FIX: account for pipeline delay)
     // =========================================================================
     wire window_ready = (row_count >= 2) && (col >= 2);
+
+    reg valid_in_d;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            valid_in_d <= 0;
+        else
+            valid_in_d <= valid_in;
+    end
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             valid_out  <= 0;
             window_out <= 0;
         end else begin
-            valid_out <= window_ready && valid_in;
+            valid_out <= window_ready && valid_in_d;
 
-            if (window_ready && valid_in) begin
+            if (window_ready && valid_in_d) begin
                 window_out <= {
                     shift_row2[2], shift_row2[1], shift_row2[0],
                     shift_row1[2], shift_row1[1], shift_row1[0],

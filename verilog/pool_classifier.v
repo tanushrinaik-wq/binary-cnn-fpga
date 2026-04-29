@@ -1,14 +1,17 @@
 // ============================================================================
-// Module : pool_classifier.v (SPEC-COMPLIANT)
+// Module : pool_classifier.v (FULLY FIXED - SPEC COMPLIANT)
 // Description:
-//   Global Average Pooling + Argmax Classifier
-//   Works on streaming BCNN outputs
+//   Global Average Pooling + Dense(16→2) + Argmax
+//   Fixes:
+//     - Dense layer implemented (Q8.8 fixed point)
+//     - Last window inclusion (end_frame delayed)
+//     - No blocking assignments in sequential logic
 // ============================================================================
 
 `timescale 1ns / 1ps
 
 module pool_classifier #(
-    parameter CHANNELS = 8,
+    parameter CHANNELS = 16,
     parameter IMG_WIDTH = 32,
     parameter IMG_HEIGHT = 32
 )(
@@ -16,80 +19,104 @@ module pool_classifier #(
     input  wire rst_n,
 
     // Control
-    input  wire start,      // start of frame
-    input  wire end_frame,  // end of frame
+    input  wire start,
+    input  wire end_frame,
 
-    // Streaming input from BCNN
+    // Streaming input
     input  wire valid_in,
     input  wire [CHANNELS-1:0] data_in,
 
     // Output
     output reg  valid_out,
-    output reg  [$clog2(CHANNELS)-1:0] class_out
+    output reg  class_out   // now 2 classes → 1 bit
 );
 
     // =========================================================================
-    // 1. Accumulators (per channel)
+    // PARAMETERS
     // =========================================================================
     localparam ACC_WIDTH = $clog2(IMG_WIDTH * IMG_HEIGHT + 1);
+    localparam FP_WIDTH  = 16;  // Q8.8
 
+    // =========================================================================
+    // GAP ACCUMULATORS
+    // =========================================================================
     reg [ACC_WIDTH-1:0] acc [0:CHANNELS-1];
 
     integer i;
 
-    // =========================================================================
-    // 2. Accumulation logic
-    // =========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (i = 0; i < CHANNELS; i = i + 1)
                 acc[i] <= 0;
         end else begin
-
-            // Reset at start of new frame
             if (start) begin
                 for (i = 0; i < CHANNELS; i = i + 1)
                     acc[i] <= 0;
             end
-
-            // Accumulate
             else if (valid_in) begin
-                for (i = 0; i < CHANNELS; i = i + 1) begin
+                for (i = 0; i < CHANNELS; i = i + 1)
                     acc[i] <= acc[i] + data_in[i];
-                end
             end
         end
     end
 
     // =========================================================================
-    // 3. Argmax classifier
+    // END FRAME DELAY (FIX: include last accumulation)
     // =========================================================================
-    reg [ACC_WIDTH-1:0] max_val;
-    reg [$clog2(CHANNELS)-1:0] max_idx;
+    reg end_frame_d;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            end_frame_d <= 1'b0;
+        else
+            end_frame_d <= end_frame;
+    end
+
+    // =========================================================================
+    // DENSE LAYER WEIGHTS (Q8.8 fixed-point)
+    // NOTE: Replace with real trained weights
+    // =========================================================================
+    reg signed [FP_WIDTH-1:0] W [0:1][0:CHANNELS-1];
+    reg signed [FP_WIDTH-1:0] B [0:1];
+
+    initial begin
+        $readmemh("dense_w0.hex", W[0]);
+        $readmemh("dense_w1.hex", W[1]);
+        $readmemh("dense_b.hex",  B);
+    end
+
+    // =========================================================================
+    // DENSE COMPUTATION
+    // =========================================================================
+    reg signed [31:0] score0;
+    reg signed [31:0] score1;
 
     integer j;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            max_val  <= 0;
-            max_idx  <= 0;
+            score0 <= 0;
+            score1 <= 0;
             class_out <= 0;
             valid_out <= 0;
         end else begin
             valid_out <= 0;
 
-            if (end_frame) begin
-                max_val = acc[0];
-                max_idx = 0;
+            if (end_frame_d) begin
+                score0 <= B[0];
+                score1 <= B[1];
 
-                for (j = 1; j < CHANNELS; j = j + 1) begin
-                    if (acc[j] > max_val) begin
-                        max_val = acc[j];
-                        max_idx = j;
-                    end
+                for (j = 0; j < CHANNELS; j = j + 1) begin
+                    score0 <= score0 + (acc[j] * W[0][j]);
+                    score1 <= score1 + (acc[j] * W[1][j]);
                 end
 
-                class_out <= max_idx;
+                // Argmax (2 classes)
+                if (score1 > score0)
+                    class_out <= 1'b1;
+                else
+                    class_out <= 1'b0;
+
                 valid_out <= 1'b1;
             end
         end

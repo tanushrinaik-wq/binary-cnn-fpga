@@ -1,9 +1,5 @@
 // ============================================================================
-// Testbench : tb_accelerator.v (FULL SPEC-COMPLIANT)
-// Description:
-//   - SPI stimulus
-//   - Image loading via $readmemh
-//   - Latency measurement
+// Testbench : tb_accelerator.v (FIXED - FULL SPEC COMPLIANT)
 // ============================================================================
 
 `timescale 1ns / 1ps
@@ -11,14 +7,14 @@
 module tb_accelerator;
 
     // =========================================================================
-    // 1. Parameters
+    // PARAMETERS
     // =========================================================================
     localparam IMG_W = 32;
     localparam IMG_H = 32;
     localparam TOTAL_PIXELS = IMG_W * IMG_H;
 
     // =========================================================================
-    // 2. Clock / Reset
+    // CLOCK / RESET
     // =========================================================================
     reg clk;
     reg rst_n;
@@ -35,29 +31,35 @@ module tb_accelerator;
     end
 
     // =========================================================================
-    // 3. SPI signals
+    // VCD DUMP (FIX)
+    // =========================================================================
+    initial begin
+        $dumpfile("bcnn_sim.vcd");
+        $dumpvars(0, tb_accelerator);
+    end
+
+    // =========================================================================
+    // SPI
     // =========================================================================
     reg spi_sck;
     reg spi_mosi;
     reg spi_cs_n;
     wire spi_miso;
 
-    // SPI clock ~20 MHz
     initial begin
         spi_sck = 0;
         forever #25 spi_sck = ~spi_sck;
     end
 
     // =========================================================================
-    // 4. DUT wiring
+    // DUT
     // =========================================================================
     wire frame_active, frame_done;
     wire l2_valid;
-    wire classifier_valid;
     wire start_frame, end_frame;
 
     wire valid_out;
-    wire [3:0] class_out;
+    wire class_out;
 
     accelerator_top dut (
         .clk(clk),
@@ -90,7 +92,7 @@ module tb_accelerator;
     );
 
     // =========================================================================
-    // 5. Image memory
+    // IMAGE
     // =========================================================================
     reg [7:0] image_mem [0:TOTAL_PIXELS-1];
 
@@ -99,7 +101,7 @@ module tb_accelerator;
     end
 
     // =========================================================================
-    // 6. SPI transmit task
+    // SPI TASK
     // =========================================================================
     task send_byte;
         input [7:0] data;
@@ -113,7 +115,7 @@ module tb_accelerator;
     endtask
 
     // =========================================================================
-    // 7. Send full image
+    // SEND IMAGE
     // =========================================================================
     integer idx;
 
@@ -122,24 +124,21 @@ module tb_accelerator;
         spi_mosi = 0;
 
         wait(rst_n);
-
         #100;
 
-        spi_cs_n = 0;  // start frame
+        spi_cs_n = 0;
 
-        for (idx = 0; idx < TOTAL_PIXELS; idx = idx + 1) begin
+        for (idx = 0; idx < TOTAL_PIXELS; idx = idx + 1)
             send_byte(image_mem[idx]);
-        end
 
-        spi_cs_n = 1;  // end frame
+        spi_cs_n = 1;
     end
 
     // =========================================================================
-    // 8. Latency measurement
+    // LATENCY TRACKING
     // =========================================================================
     reg [31:0] cycle_counter;
     reg [31:0] start_cycle;
-    reg [31:0] end_cycle;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -148,7 +147,6 @@ module tb_accelerator;
             cycle_counter <= cycle_counter + 1;
     end
 
-    // Detect first SPI activity
     reg started;
 
     always @(posedge clk or negedge rst_n) begin
@@ -161,16 +159,17 @@ module tb_accelerator;
         end
     end
 
-    // Detect classification output
+    // =========================================================================
+    // OUTPUT + METRICS (FIXED)
+    // =========================================================================
     always @(posedge clk) begin
         if (valid_out) begin
-            end_cycle <= cycle_counter;
-
             $display("====================================");
             $display("Classification Result: %d", class_out);
-            $display("Latency (cycles): %d", end_cycle - start_cycle);
+            $display("Latency (cycles): %d", cycle_counter - start_cycle);
+            $display("Inference time: %0.2f us",
+                     (cycle_counter - start_cycle) * 20.0 / 1000.0);
             $display("====================================");
-
             $finish;
         end
     end

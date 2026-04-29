@@ -14,44 +14,40 @@ module fsm_controller #(
     input  wire clk,
     input  wire rst_n,
 
-    // From SPI
+    // Frame control (from SPI)
     input  wire frame_active,
-    input  wire frame_done,
 
-    // From L2 (IMPORTANT CHANGE)
+    // Pipeline signal (L2 valid outputs)
     input  wire l2_valid,
 
-    // From classifier
+    // Classifier done signal
     input  wire classifier_valid,
 
     // Outputs
-    output reg start_frame,
-    output reg end_frame
+    output reg  start_frame,   // 1-cycle pulse
+    output reg  end_frame      // 1-cycle pulse
 );
 
     // =========================================================================
-    // 1. Parameters
+    // FSM States
+    // =========================================================================
+    localparam IDLE       = 2'd0;
+    localparam RUNNING    = 2'd1;
+    localparam WAIT_CLASS = 2'd2;
+
+    reg [1:0] state, next_state;
+
+    // =========================================================================
+    // Total valid convolution windows
+    // 2 layers of 3x3 valid conv:
+    // 32 → 30 → 28 ⇒ 28x28 = 784
     // =========================================================================
     localparam TOTAL_WINDOWS = (IMG_W - 4) * (IMG_H - 4);
 
-    // =========================================================================
-    // 2. State machine
-    // =========================================================================
-    typedef enum reg [1:0] {
-        IDLE,
-        RUNNING,
-        WAIT_CLASS
-    } state_t;
-
-    state_t state, next_state;
-
-    // =========================================================================
-    // 3. Window counter (counts L2 outputs)
-    // =========================================================================
     reg [$clog2(TOTAL_WINDOWS+1)-1:0] window_count;
 
     // =========================================================================
-    // 4. State register
+    // State register
     // =========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -61,15 +57,15 @@ module fsm_controller #(
     end
 
     // =========================================================================
-    // 5. Next-state logic
+    // Next-state logic
     // =========================================================================
     always @(*) begin
         case (state)
-
             IDLE:
                 next_state = frame_active ? RUNNING : IDLE;
 
             RUNNING:
+                // Transition AFTER last window is counted
                 next_state = (window_count == TOTAL_WINDOWS) ? WAIT_CLASS : RUNNING;
 
             WAIT_CLASS:
@@ -77,51 +73,41 @@ module fsm_controller #(
 
             default:
                 next_state = IDLE;
-
         endcase
     end
 
     // =========================================================================
-    // 6. Control + counter logic
+    // Output + counter logic
     // =========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            window_count <= 0;
-            start_frame  <= 0;
-            end_frame    <= 0;
+            window_count <= {($clog2(TOTAL_WINDOWS+1)){1'b0}};
+            start_frame  <= 1'b0;
+            end_frame    <= 1'b0;
         end else begin
             // Default outputs
-            start_frame <= 0;
-            end_frame   <= 0;
+            start_frame <= 1'b0;
+            end_frame   <= 1'b0;
 
             case (state)
 
-                // -------------------------------------------------------------
-                IDLE
-                // -------------------------------------------------------------
                 IDLE: begin
-                    window_count <= 0;
-
+                    window_count <= {($clog2(TOTAL_WINDOWS+1)){1'b0}};
                     if (frame_active)
-                        start_frame <= 1;
+                        start_frame <= 1'b1;
                 end
 
-                // -------------------------------------------------------------
-                RUNNING
-                // -------------------------------------------------------------
                 RUNNING: begin
                     if (l2_valid) begin
-                        window_count <= window_count + 1;
+                        window_count <= window_count + 1'b1;
 
-                        // Assert end_frame on LAST valid window
+                        // Assert on last valid window
+                        // NOTE: classifier must delay internally by 1 cycle
                         if (window_count == TOTAL_WINDOWS - 1)
-                            end_frame <= 1;
+                            end_frame <= 1'b1;
                     end
                 end
 
-                // -------------------------------------------------------------
-                WAIT_CLASS
-                // -------------------------------------------------------------
                 WAIT_CLASS: begin
                     // wait for classifier_valid
                 end

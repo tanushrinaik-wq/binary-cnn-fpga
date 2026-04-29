@@ -1,5 +1,5 @@
 // ============================================================================
-// Module : accelerator_top.v (FINAL SPEC-COMPLIANT)
+// Module : accelerator_top.v (FIXED - SPEC COMPLIANT)
 // Description:
 //   Pure datapath integration for BCNN accelerator
 //   FSM is external (fsm_controller.v)
@@ -36,6 +36,12 @@ module accelerator_top #(
 );
 
     // =========================================================================
+    // LOCALPARAMS (FIX: missing declarations)
+    // =========================================================================
+    localparam CH1 = 8;
+    localparam CH2 = 16;
+
+    // =========================================================================
     // 1. SPI SLAVE
     // =========================================================================
     wire [7:0] spi_data;
@@ -60,7 +66,7 @@ module accelerator_top #(
     wire [7:0] fifo_out;
     wire fifo_empty;
 
-    wire fifo_rd = !fifo_empty;  // always consume (streaming)
+    wire fifo_rd = !fifo_empty;
 
     spi_fifo fifo_inst (
         .sys_clk(clk),
@@ -77,6 +83,17 @@ module accelerator_top #(
     );
 
     // =========================================================================
+    // 2.1 FIFO READ ALIGNMENT (FIX: 1-cycle latency compensation)
+    // =========================================================================
+    reg fifo_rd_d;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            fifo_rd_d <= 1'b0;
+        else
+            fifo_rd_d <= fifo_rd;
+    end
+
+    // =========================================================================
     // 3. BINARIZER
     // =========================================================================
     wire pixel_bin = (fifo_out > 8'd127);
@@ -90,7 +107,7 @@ module accelerator_top #(
     line_buffer #(.IMG_WIDTH(IMG_W)) lb_inst (
         .clk(clk),
         .rst_n(rst_n),
-        .valid_in(!fifo_empty),
+        .valid_in(fifo_rd_d),   // FIXED alignment
         .pixel_in(pixel_bin),
         .valid_out(lb_valid),
         .window_out(window)
@@ -145,6 +162,11 @@ module accelerator_top #(
         .valid_out(l2_valid),
         .out_bits(l2_out)
     );
+
+    // =========================================================================
+    // STATUS OUTPUT (FIX: previously undriven)
+    // =========================================================================
+    assign bcnn_valid = l2_valid;
 
     // ======================= POOL =======================
     pool_classifier #(

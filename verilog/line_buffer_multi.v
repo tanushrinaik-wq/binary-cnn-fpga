@@ -1,14 +1,11 @@
 // ============================================================================
-// Module : line_buffer_multi.v
-// Description:
-//   Multi-channel 3x3 sliding window generator
-//   Used for L2
+// Module : line_buffer_multi.v (FIXED - NO SKEW)
 // ============================================================================
 
 `timescale 1ns / 1ps
 
 module line_buffer_multi #(
-    parameter IMG_WIDTH = 30,   // reduced after L1
+    parameter IMG_WIDTH = 30,
     parameter CHANNELS = 8
 )(
     input  wire clk,
@@ -21,7 +18,9 @@ module line_buffer_multi #(
     output reg  [CHANNELS*9-1:0] window_out
 );
 
-    // Column index
+    // =========================================================================
+    // COLUMN
+    // =========================================================================
     reg [$clog2(IMG_WIDTH)-1:0] col;
 
     always @(posedge clk or negedge rst_n) begin
@@ -31,7 +30,21 @@ module line_buffer_multi #(
             col <= (col == IMG_WIDTH-1) ? 0 : col + 1;
     end
 
-    // Row buffers
+    // =========================================================================
+    // INPUT DELAY (FIX)
+    // =========================================================================
+    reg [CHANNELS-1:0] pixel_in_d;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            pixel_in_d <= 0;
+        else if (valid_in)
+            pixel_in_d <= pixel_in;
+    end
+
+    // =========================================================================
+    // ROW BUFFERS
+    // =========================================================================
     (* ramstyle = "M4K" *)
     reg [CHANNELS-1:0] row_buf1 [0:IMG_WIDTH-1];
 
@@ -50,7 +63,9 @@ module line_buffer_multi #(
         end
     end
 
-    // Horizontal shift registers per channel
+    // =========================================================================
+    // SHIFT REGISTERS (FIXED)
+    // =========================================================================
     reg [2:0] shift0 [0:CHANNELS-1];
     reg [2:0] shift1 [0:CHANNELS-1];
     reg [2:0] shift2 [0:CHANNELS-1];
@@ -66,14 +81,16 @@ module line_buffer_multi #(
             end
         end else if (valid_in) begin
             for (c = 0; c < CHANNELS; c = c + 1) begin
-                shift0[c] <= {shift0[c][1:0], pixel_in[c]};
+                shift0[c] <= {shift0[c][1:0], pixel_in_d[c]};
                 shift1[c] <= {shift1[c][1:0], row1_data[c]};
                 shift2[c] <= {shift2[c][1:0], row2_data[c]};
             end
         end
     end
 
-    // Row tracking
+    // =========================================================================
+    // ROW COUNT
+    // =========================================================================
     reg [$clog2(IMG_WIDTH):0] row_count;
 
     always @(posedge clk or negedge rst_n) begin
@@ -85,7 +102,21 @@ module line_buffer_multi #(
 
     wire ready = (row_count >= 2) && (col >= 2);
 
-    // Output assembly
+    // =========================================================================
+    // VALID ALIGNMENT
+    // =========================================================================
+    reg valid_in_d;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            valid_in_d <= 0;
+        else
+            valid_in_d <= valid_in;
+    end
+
+    // =========================================================================
+    // OUTPUT
+    // =========================================================================
     integer i;
 
     always @(posedge clk or negedge rst_n) begin
@@ -93,9 +124,9 @@ module line_buffer_multi #(
             valid_out  <= 0;
             window_out <= 0;
         end else begin
-            valid_out <= ready && valid_in;
+            valid_out <= ready && valid_in_d;
 
-            if (ready && valid_in) begin
+            if (ready && valid_in_d) begin
                 for (i = 0; i < CHANNELS; i = i + 1) begin
                     window_out[i*9 +: 9] <= {
                         shift2[i][2], shift2[i][1], shift2[i][0],

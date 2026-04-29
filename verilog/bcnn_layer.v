@@ -1,7 +1,5 @@
 // ============================================================================
-// Module : bcnn_layer.v (SPEC-COMPLIANT)
-// Description:
-//   Streaming BCNN layer (XNOR + popcount + threshold)
+// Module : bcnn_layer.v (FIXED - SPEC COMPLIANT)
 // ============================================================================
 
 `timescale 1ns / 1ps
@@ -14,11 +12,9 @@ module bcnn_layer #(
     input  wire clk,
     input  wire rst_n,
 
-    // Streaming input window (from line buffer)
     input  wire valid_in,
     input  wire [K*K*IN_CH-1:0] window_in,
 
-    // Output
     output reg  valid_out,
     output reg  [OUT_CH-1:0] out_bits
 );
@@ -27,17 +23,14 @@ module bcnn_layer #(
     localparam COUNT_W = $clog2(N+1);
 
     // =========================================================================
-    // 1. Weight storage (ROM-friendly)
+    // WEIGHTS + THRESHOLDS + FLIP FLAGS
     // =========================================================================
     (* ramstyle = "M4K" *) reg [N-1:0] weights [0:OUT_CH-1];
-
-    // =========================================================================
-    // 2. Threshold storage
-    // =========================================================================
     (* ramstyle = "M4K" *) reg [COUNT_W-1:0] thresholds [0:OUT_CH-1];
+    reg flip [0:OUT_CH-1];
 
     // =========================================================================
-    // 3. Popcount results
+    // POPCOUNT
     // =========================================================================
     wire [COUNT_W-1:0] pc [0:OUT_CH-1];
 
@@ -53,7 +46,7 @@ module bcnn_layer #(
     endgenerate
 
     // =========================================================================
-    // 4. Registered output (pipeline stage)
+    // OUTPUT LOGIC (WITH FLIP)
     // =========================================================================
     integer j;
 
@@ -66,18 +59,21 @@ module bcnn_layer #(
 
             if (valid_in) begin
                 for (j = 0; j < OUT_CH; j = j + 1) begin
-                    out_bits[j] <= (pc[j] >= thresholds[j]);
+                    out_bits[j] <= flip[j] ?
+                        (pc[j] < thresholds[j]) :
+                        (pc[j] >= thresholds[j]);
                 end
             end
         end
     end
 
     // =========================================================================
-    // 5. Memory initialization
+    // MEMORY INIT (FIXED FILE NAMES + HEX FORMAT)
     // =========================================================================
     initial begin
-        $readmemh("weights_layer.mif", weights);
-        $readmemh("thresholds_layer.mif", thresholds);
+        $readmemh("conv1_weights.hex", weights);
+        $readmemh("conv1_thresh.hex",  thresholds);
+        $readmemb("conv1_flip.mif",    flip);   // binary file OK
     end
 
 endmodule

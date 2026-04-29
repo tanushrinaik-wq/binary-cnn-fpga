@@ -3,6 +3,12 @@
 // Description:
 //   XNOR + balanced adder tree popcount
 //   Designed for high Fmax on FPGA
+// NOTE:
+// This implementation is optimized for small N (e.g., N=9 as used in this design).
+// The reduction tree is only partially balanced (3 levels + final loop).
+// For larger N, the final accumulation becomes a linear carry chain,
+// which can significantly reduce Fmax.
+// If scaling to larger N, extend the tree or pipeline the reduction.
 // ============================================================================
 
 `timescale 1ns / 1ps
