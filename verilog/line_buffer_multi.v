@@ -1,5 +1,5 @@
 // ============================================================================
-// Module : line_buffer_multi.v (FIXED - NO SKEW)
+// Module : line_buffer_multi.v (CLEAN - SIM SAFE)
 // ============================================================================
 
 `timescale 1ns / 1ps
@@ -18,9 +18,6 @@ module line_buffer_multi #(
     output reg  [CHANNELS*9-1:0] window_out
 );
 
-    // =========================================================================
-    // COLUMN
-    // =========================================================================
     reg [$clog2(IMG_WIDTH)-1:0] col;
 
     always @(posedge clk or negedge rst_n) begin
@@ -30,9 +27,6 @@ module line_buffer_multi #(
             col <= (col == IMG_WIDTH-1) ? 0 : col + 1;
     end
 
-    // =========================================================================
-    // INPUT DELAY (FIX)
-    // =========================================================================
     reg [CHANNELS-1:0] pixel_in_d;
 
     always @(posedge clk or negedge rst_n) begin
@@ -42,13 +36,8 @@ module line_buffer_multi #(
             pixel_in_d <= pixel_in;
     end
 
-    // =========================================================================
-    // ROW BUFFERS
-    // =========================================================================
-    (* ramstyle = "M4K" *)
+    // ROW BUFFERS (removed ramstyle)
     reg [CHANNELS-1:0] row_buf1 [0:IMG_WIDTH-1];
-
-    (* ramstyle = "M4K" *)
     reg [CHANNELS-1:0] row_buf2 [0:IMG_WIDTH-1];
 
     reg [CHANNELS-1:0] row1_data, row2_data;
@@ -63,9 +52,6 @@ module line_buffer_multi #(
         end
     end
 
-    // =========================================================================
-    // SHIFT REGISTERS (FIXED)
-    // =========================================================================
     reg [2:0] shift0 [0:CHANNELS-1];
     reg [2:0] shift1 [0:CHANNELS-1];
     reg [2:0] shift2 [0:CHANNELS-1];
@@ -88,9 +74,6 @@ module line_buffer_multi #(
         end
     end
 
-    // =========================================================================
-    // ROW COUNT
-    // =========================================================================
     reg [$clog2(IMG_WIDTH):0] row_count;
 
     always @(posedge clk or negedge rst_n) begin
@@ -102,9 +85,6 @@ module line_buffer_multi #(
 
     wire ready = (row_count >= 2) && (col >= 2);
 
-    // =========================================================================
-    // VALID ALIGNMENT
-    // =========================================================================
     reg valid_in_d;
 
     always @(posedge clk or negedge rst_n) begin
@@ -114,9 +94,6 @@ module line_buffer_multi #(
             valid_in_d <= valid_in;
     end
 
-    // =========================================================================
-    // OUTPUT
-    // =========================================================================
     integer i;
 
     always @(posedge clk or negedge rst_n) begin
@@ -138,4 +115,14 @@ module line_buffer_multi #(
         end
     end
 
-endmodule
+// synthesis translate_off
+    integer j;
+    initial begin
+        for (j = 0; j < IMG_WIDTH; j = j + 1) begin
+            row_buf1[j] = 0;
+            row_buf2[j] = 0;
+        end
+    end
+// synthesis translate_on
+
+endmodules

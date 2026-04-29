@@ -161,7 +161,8 @@ module spi_fifo #(
     // Depth power-of-2 check
     initial begin
         if ((DEPTH & (DEPTH - 1)) != 0)
-            $fatal(1, "spi_fifo: DEPTH=%0d is not a power of 2.", DEPTH);
+            $display("ERROR: spi_fifo DEPTH=%0d is not a power of 2.", DEPTH);
+            $finish;
     end
 
     // Runtime overflow/underflow monitors

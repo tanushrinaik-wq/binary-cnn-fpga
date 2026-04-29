@@ -1,5 +1,5 @@
 // ============================================================================
-// Module : bcnn_layer2.v (FIXED - SPEC COMPLIANT)
+// Module : bcnn_layer2.v (FINAL FIX - VERILOG-2001 SAFE)
 // ============================================================================
 
 `timescale 1ns / 1ps
@@ -20,11 +20,11 @@ module bcnn_layer2 #(
 );
 
     localparam N = K*K;
-    localparam PC_WIDTH = $clog2(N+1);
+    localparam PC_WIDTH  = $clog2(N+1);
     localparam SUM_WIDTH = $clog2(IN_CH * N + 1);
 
     // =========================================================================
-    // WEIGHTS + THRESHOLDS + FLIP FLAGS
+    // WEIGHTS / THRESHOLDS / FLIP
     // =========================================================================
     (* ramstyle = "M4K" *)
     reg [IN_CH*K*K-1:0] weights [0:OUT_CH-1];
@@ -35,9 +35,9 @@ module bcnn_layer2 #(
     reg flip [0:OUT_CH-1];
 
     // =========================================================================
-    // POPCOUNT PER CHANNEL
+    // POPCOUNT (FLATTENED ARRAY FIX)
     // =========================================================================
-    wire [PC_WIDTH-1:0] pc [0:OUT_CH-1][0:IN_CH-1];
+    wire [PC_WIDTH-1:0] pc [0:(OUT_CH*IN_CH)-1];
 
     genvar f, c;
     generate
@@ -46,14 +46,14 @@ module bcnn_layer2 #(
                 popcount #(.N(N)) pc_inst (
                     .a(window_in[c*N +: N]),
                     .b(weights[f][c*N +: N]),
-                    .count(pc[f][c])
+                    .count(pc[f*IN_CH + c])   // ✅ flattened indexing
                 );
             end
         end
     endgenerate
 
     // =========================================================================
-    // ACCUMULATION
+    // ACCUMULATION (UPDATED INDEXING)
     // =========================================================================
     reg [SUM_WIDTH-1:0] sum [0:OUT_CH-1];
 
@@ -63,13 +63,13 @@ module bcnn_layer2 #(
         for (i = 0; i < OUT_CH; i = i + 1) begin
             sum[i] = 0;
             for (j = 0; j < IN_CH; j = j + 1) begin
-                sum[i] = sum[i] + pc[i][j];
+                sum[i] = sum[i] + pc[i*IN_CH + j];  // ✅ fixed
             end
         end
     end
 
     // =========================================================================
-    // OUTPUT (WITH FLIP)
+    // OUTPUT (WITH FLIP FLAGS)
     // =========================================================================
     integer k;
 
@@ -91,7 +91,7 @@ module bcnn_layer2 #(
     end
 
     // =========================================================================
-    // MEMORY INIT (FIXED)
+    // MEMORY INIT
     // =========================================================================
     initial begin
         $readmemh("conv2_weights.hex", weights);

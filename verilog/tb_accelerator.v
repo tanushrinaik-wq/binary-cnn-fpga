@@ -1,27 +1,21 @@
 // ============================================================================
-// Testbench : tb_accelerator.v (FIXED - FULL SPEC COMPLIANT)
+// Testbench : tb_accelerator.v (FINAL CLEAN)
 // ============================================================================
 
 `timescale 1ns / 1ps
 
 module tb_accelerator;
 
-    // =========================================================================
-    // PARAMETERS
-    // =========================================================================
     localparam IMG_W = 32;
     localparam IMG_H = 32;
     localparam TOTAL_PIXELS = IMG_W * IMG_H;
 
-    // =========================================================================
-    // CLOCK / RESET
-    // =========================================================================
     reg clk;
     reg rst_n;
 
     initial begin
         clk = 0;
-        forever #10 clk = ~clk;   // 50 MHz
+        forever #10 clk = ~clk;
     end
 
     initial begin
@@ -30,17 +24,12 @@ module tb_accelerator;
         rst_n = 1;
     end
 
-    // =========================================================================
-    // VCD DUMP (FIX)
-    // =========================================================================
     initial begin
         $dumpfile("bcnn_sim.vcd");
         $dumpvars(0, tb_accelerator);
     end
 
-    // =========================================================================
     // SPI
-    // =========================================================================
     reg spi_sck;
     reg spi_mosi;
     reg spi_cs_n;
@@ -51,15 +40,13 @@ module tb_accelerator;
         forever #25 spi_sck = ~spi_sck;
     end
 
-    // =========================================================================
-    // DUT
-    // =========================================================================
+    // DUT signals
     wire frame_active, frame_done;
     wire l2_valid;
     wire start_frame, end_frame;
 
     wire valid_out;
-    wire class_out;
+    wire class_out;   
 
     accelerator_top dut (
         .clk(clk),
@@ -80,6 +67,7 @@ module tb_accelerator;
         .class_out(class_out)
     );
 
+    // ✅ Now valid because FSM was fixed earlier
     fsm_controller fsm (
         .clk(clk),
         .rst_n(rst_n),
@@ -91,18 +79,13 @@ module tb_accelerator;
         .end_frame(end_frame)
     );
 
-    // =========================================================================
     // IMAGE
-    // =========================================================================
     reg [7:0] image_mem [0:TOTAL_PIXELS-1];
 
     initial begin
         $readmemh("image.hex", image_mem);
     end
 
-    // =========================================================================
-    // SPI TASK
-    // =========================================================================
     task send_byte;
         input [7:0] data;
         integer i;
@@ -114,9 +97,6 @@ module tb_accelerator;
         end
     endtask
 
-    // =========================================================================
-    // SEND IMAGE
-    // =========================================================================
     integer idx;
 
     initial begin
@@ -134,9 +114,6 @@ module tb_accelerator;
         spi_cs_n = 1;
     end
 
-    // =========================================================================
-    // LATENCY TRACKING
-    // =========================================================================
     reg [31:0] cycle_counter;
     reg [31:0] start_cycle;
 
@@ -159,9 +136,6 @@ module tb_accelerator;
         end
     end
 
-    // =========================================================================
-    // OUTPUT + METRICS (FIXED)
-    // =========================================================================
     always @(posedge clk) begin
         if (valid_out) begin
             $display("====================================");

@@ -1,5 +1,5 @@
 // ============================================================================
-// Module : line_buffer.v (FIXED - NO SKEW)
+// Module : line_buffer.v (CLEAN - SIM SAFE)
 // ============================================================================
 
 `timescale 1ns / 1ps
@@ -17,9 +17,7 @@ module line_buffer #(
     output reg  [8:0] window_out
 );
 
-    // =========================================================================
-    // COLUMN COUNTER
-    // =========================================================================
+    // COLUMN
     reg [$clog2(IMG_WIDTH)-1:0] col;
 
     always @(posedge clk or negedge rst_n) begin
@@ -29,9 +27,7 @@ module line_buffer #(
             col <= (col == IMG_WIDTH-1) ? 0 : col + 1;
     end
 
-    // =========================================================================
-    // INPUT DELAY (FIX: ALIGN WITH BRAM LATENCY)
-    // =========================================================================
+    // INPUT DELAY
     reg pixel_in_d;
 
     always @(posedge clk or negedge rst_n) begin
@@ -41,11 +37,9 @@ module line_buffer #(
             pixel_in_d <= pixel_in;
     end
 
-    // =========================================================================
-    // ROW BUFFERS
-    // =========================================================================
-    (* ramstyle = "M4K" *) reg row_buf1 [0:IMG_WIDTH-1];
-    (* ramstyle = "M4K" *) reg row_buf2 [0:IMG_WIDTH-1];
+    // ROW BUFFERS (removed ramstyle)
+    reg row_buf1 [0:IMG_WIDTH-1];
+    reg row_buf2 [0:IMG_WIDTH-1];
 
     reg row1_data, row2_data;
 
@@ -59,9 +53,7 @@ module line_buffer #(
         end
     end
 
-    // =========================================================================
-    // SHIFT REGISTERS (FIXED: USE DELAYED INPUT)
-    // =========================================================================
+    // SHIFT REG
     reg [2:0] shift_row0, shift_row1, shift_row2;
 
     always @(posedge clk or negedge rst_n) begin
@@ -76,9 +68,7 @@ module line_buffer #(
         end
     end
 
-    // =========================================================================
     // ROW COUNT
-    // =========================================================================
     reg [$clog2(IMG_WIDTH):0] row_count;
 
     always @(posedge clk or negedge rst_n) begin
@@ -88,9 +78,6 @@ module line_buffer #(
             row_count <= row_count + 1;
     end
 
-    // =========================================================================
-    // VALID (FIX: account for pipeline delay)
-    // =========================================================================
     wire window_ready = (row_count >= 2) && (col >= 2);
 
     reg valid_in_d;
@@ -118,5 +105,15 @@ module line_buffer #(
             end
         end
     end
+
+// synthesis translate_off
+    integer i;
+    initial begin
+        for (i = 0; i < IMG_WIDTH; i = i + 1) begin
+            row_buf1[i] = 0;
+            row_buf2[i] = 0;
+        end
+    end
+// synthesis translate_on
 
 endmodule
