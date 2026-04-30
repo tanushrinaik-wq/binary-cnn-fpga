@@ -1,13 +1,21 @@
 // ============================================================================
-// Module : pool_classifier.v (FINAL - VERILOG2001 + CORRECT MATH)
+// Module : pool_classifier.v (FIXED - PIPELINED DSP)
+//
+// Changes from original:
+//   1. Removed mult_shift_add function entirely.
+//   2. Stage 1 (clocked): multiplies acc[i] * W using * operator so Quartus
+//      infers DSP blocks instead of a shift-add LUT chain.
+//   3. Stage 2 (clocked): accumulates the registered products + bias.
+//   4. valid_out is now delayed 2 extra cycles relative to end_frame_d.
+//      This is harmless — the FSM waits on valid_out anyway.
 // ============================================================================
 
 `timescale 1ns / 1ps
 
 module pool_classifier #(
-    parameter CHANNELS  = 16,
-    parameter IMG_WIDTH = 32,
-    parameter IMG_HEIGHT = 32
+    parameter CHANNELS   = 16,
+    parameter IMG_WIDTH  = 28,
+    parameter IMG_HEIGHT = 28
 )(
     input  wire clk,
     input  wire rst_n,
@@ -25,11 +33,15 @@ module pool_classifier #(
     // =========================================================================
     // PARAMETERS
     // =========================================================================
-    localparam ACC_WIDTH = $clog2(IMG_WIDTH * IMG_HEIGHT + 1);
-    localparam FP_WIDTH  = 16;
+    localparam ACC_WIDTH  = $clog2(IMG_WIDTH * IMG_HEIGHT + 1);
+    localparam FP_WIDTH   = 16;
+    // Product of ACC_WIDTH-bit unsigned * FP_WIDTH-bit signed
+    localparam PROD_WIDTH = ACC_WIDTH + FP_WIDTH;
+    // Sum of CHANNELS products — add log2(CHANNELS) bits to avoid overflow
+    localparam SUM_WIDTH  = PROD_WIDTH + $clog2(CHANNELS) + 1;
 
     // =========================================================================
-    // GAP ACCUMULATION
+    // GAP ACCUMULATION (unchanged)
     // =========================================================================
     reg [ACC_WIDTH-1:0] acc [0:CHANNELS-1];
 
@@ -43,7 +55,7 @@ module pool_classifier #(
             if (start) begin
                 for (i = 0; i < CHANNELS; i = i + 1)
                     acc[i] <= 0;
-            end 
+            end
             else if (valid_in && !end_frame) begin
                 for (i = 0; i < CHANNELS; i = i + 1)
                     acc[i] <= acc[i] + data_in[i];
@@ -52,7 +64,7 @@ module pool_classifier #(
     end
 
     // =========================================================================
-    // END FRAME DELAY
+    // END FRAME DELAY (unchanged)
     // =========================================================================
     reg end_frame_d;
 
@@ -64,86 +76,106 @@ module pool_classifier #(
     end
 
     // =========================================================================
-    // WEIGHTS (FLATTENED - VERILOG 2001 SAFE)
+    // WEIGHTS (unchanged)
     // =========================================================================
-    reg signed [FP_WIDTH-1:0] W0 [0:CHANNELS-1];
-    reg signed [FP_WIDTH-1:0] W1 [0:CHANNELS-1];
+    reg signed [FP_WIDTH-1:0] W0   [0:CHANNELS-1];
+    reg signed [FP_WIDTH-1:0] W1   [0:CHANNELS-1];
     reg signed [FP_WIDTH-1:0] B0, B1;
     reg signed [FP_WIDTH-1:0] Btmp [0:1];
 
     initial begin
         $readmemh("dense_w0.hex", W0);
         $readmemh("dense_w1.hex", W1);
-
-        // Load biases via temp array
-       
-        $readmemh("dense_b.hex", Btmp);
+        $readmemh("dense_b.hex",  Btmp);
         B0 = Btmp[0];
         B1 = Btmp[1];
     end
 
     // =========================================================================
-    // CORRECT TWO'S COMPLEMENT SHIFT-ADD MULTIPLIER
+    // PIPELINE STAGE 1 — MULTIPLY
+    // The * operator on a signed * unsigned expression is inferred as a DSP
+    // block on Cyclone IV. Each multiply completes in one clock cycle inside
+    // the DSP hard block, replacing the 16-iteration LUT shift-add chain.
+    // multstyle attribute hints Quartus to prefer DSP over logic cells.
     // =========================================================================
-    function signed [31:0] mult_shift_add;
-        input [ACC_WIDTH-1:0] a;
-        input signed [FP_WIDTH-1:0] w;
+    (* multstyle = "dsp" *) reg signed [PROD_WIDTH-1:0] prod0 [0:CHANNELS-1];
+    (* multstyle = "dsp" *) reg signed [PROD_WIDTH-1:0] prod1 [0:CHANNELS-1];
+    reg pipe1_valid;
 
-        integer k;
-        reg signed [31:0] result;
-        reg [31:0] a_ext;
-
-        begin
-            result = 0;
-
-            // zero-extend 'a'
-            a_ext = {{(32-ACC_WIDTH){1'b0}}, a};
-
-            // positive bits [0 .. FP_WIDTH-2]
-            for (k = 0; k <= FP_WIDTH-2; k = k + 1) begin
-                if (w[k])
-                    result = result + (a_ext << k);
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            pipe1_valid <= 0;
+            for (i = 0; i < CHANNELS; i = i + 1) begin
+                prod0[i] <= 0;
+                prod1[i] <= 0;
             end
-
-            // MSB = negative weight
-            if (w[FP_WIDTH-1])
-                result = result - (a_ext << (FP_WIDTH-1));
-
-            mult_shift_add = result;
-        end
-    endfunction
-
-    // =========================================================================
-    // COMBINATIONAL DENSE
-    // =========================================================================
-    reg signed [31:0] comb_score0;
-    reg signed [31:0] comb_score1;
-
-    integer j;
-
-    always @(*) begin
-        // sign-extend biases
-        comb_score0 = {{(32-FP_WIDTH){B0[FP_WIDTH-1]}}, B0};
-        comb_score1 = {{(32-FP_WIDTH){B1[FP_WIDTH-1]}}, B1};
-
-        for (j = 0; j < CHANNELS; j = j + 1) begin
-            comb_score0 = comb_score0 + mult_shift_add(acc[j], W0[j]);
-            comb_score1 = comb_score1 + mult_shift_add(acc[j], W1[j]);
+        end else begin
+            pipe1_valid <= end_frame_d;
+            if (end_frame_d) begin
+                for (i = 0; i < CHANNELS; i = i + 1) begin
+                    // Zero-extend acc to signed, then multiply signed weight.
+                    // Quartus maps this directly to a DSP18 block.
+                    prod0[i] <= $signed({1'b0, acc[i]}) * $signed(W0[i]);
+                    prod1[i] <= $signed({1'b0, acc[i]}) * $signed(W1[i]);
+                end
+            end
         end
     end
 
     // =========================================================================
-    // OUTPUT
+    // PIPELINE STAGE 2 — ACCUMULATE
+    // Products are already registered. This stage is just 16 additions of
+    // known-width values — a short adder tree, well within 20 ns.
+    // =========================================================================
+
+    // Combinational sum of registered products
+    reg signed [SUM_WIDTH-1:0] sum0_comb;
+    reg signed [SUM_WIDTH-1:0] sum1_comb;
+
+    integer j;
+
+    always @(*) begin
+        sum0_comb = {{(SUM_WIDTH-FP_WIDTH){B0[FP_WIDTH-1]}}, B0};
+        sum1_comb = {{(SUM_WIDTH-FP_WIDTH){B1[FP_WIDTH-1]}}, B1};
+        for (j = 0; j < CHANNELS; j = j + 1) begin
+            sum0_comb = sum0_comb +
+                {{(SUM_WIDTH-PROD_WIDTH){prod0[j][PROD_WIDTH-1]}}, prod0[j]};
+            sum1_comb = sum1_comb +
+                {{(SUM_WIDTH-PROD_WIDTH){prod1[j][PROD_WIDTH-1]}}, prod1[j]};
+        end
+    end
+
+    // Register stage 2 result
+    reg signed [SUM_WIDTH-1:0] score0, score1;
+    reg pipe2_valid;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            pipe2_valid <= 0;
+            score0      <= 0;
+            score1      <= 0;
+        end else begin
+            pipe2_valid <= pipe1_valid;
+            if (pipe1_valid) begin
+                score0 <= sum0_comb;
+                score1 <= sum1_comb;
+            end
+        end
+    end
+
+    // =========================================================================
+    // OUTPUT — now driven by pipe2_valid instead of end_frame_d
+    // Latency vs original: +2 clock cycles. Irrelevant to system correctness
+    // because fsm_controller waits on classifier_valid (= valid_out).
     // =========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             valid_out <= 0;
             class_out <= 0;
         end else begin
-            valid_out <= end_frame_d;
-
-            if (end_frame_d)
-                class_out <= (comb_score1 > comb_score0);
+            valid_out <= pipe2_valid;
+            if (pipe2_valid)
+                class_out <= (score1 > score0);
         end
     end
 
