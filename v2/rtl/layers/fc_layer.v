@@ -18,11 +18,15 @@ module fc_layer #(
 );
     reg signed [FP_WIDTH-1:0] weights [0:(3*IN_FEATURES)-1];
     reg signed [FP_WIDTH-1:0] bias [0:2];
-    integer i;
-    reg signed [SCORE_WIDTH-1:0] tmp0;
-    reg signed [SCORE_WIDTH-1:0] tmp1;
-    reg signed [SCORE_WIDTH-1:0] tmp2;
-    reg signed [COUNT_WIDTH:0] feature;
+    reg [IN_FEATURES*COUNT_WIDTH-1:0] data_reg;
+
+    reg busy;
+    reg [1:0] class_idx;
+    reg [8:0] feature_idx;
+    reg signed [SCORE_WIDTH-1:0] acc;
+
+    reg signed [COUNT_WIDTH:0] feature_value;
+    reg signed [SCORE_WIDTH-1:0] acc_work;
 
     initial begin
         $readmemh("../../weights/fc_weights.hex", weights);
@@ -31,35 +35,58 @@ module fc_layer #(
 
     always @(posedge clk) begin
         if (rst) begin
+            busy <= 1'b0;
+            class_idx <= 0;
+            feature_idx <= 0;
+            acc <= 0;
+            data_reg <= 0;
             valid_out <= 0;
             class_out <= 0;
             score0 <= 0;
             score1 <= 0;
             score2 <= 0;
         end else begin
-            valid_out <= 0;
-            if (valid_in) begin
-                tmp0 = bias[0];
-                tmp1 = bias[1];
-                tmp2 = bias[2];
-                for (i = 0; i < IN_FEATURES; i = i + 1) begin
-                    feature = $signed({1'b0, data_in[i*COUNT_WIDTH +: COUNT_WIDTH]});
-                    tmp0 = tmp0 + feature * weights[i];
-                    tmp1 = tmp1 + feature * weights[IN_FEATURES + i];
-                    tmp2 = tmp2 + feature * weights[(2*IN_FEATURES) + i];
+            valid_out <= 1'b0;
+
+            if (!busy) begin
+                if (valid_in) begin
+                    data_reg <= data_in;
+                    busy <= 1'b1;
+                    class_idx <= 0;
+                    feature_idx <= 0;
+                    acc <= bias[0];
                 end
-                score0 <= tmp0;
-                score1 <= tmp1;
-                score2 <= tmp2;
-                if (tmp0 >= tmp1 && tmp0 >= tmp2)
-                    class_out <= 2'd0;
-                else if (tmp1 >= tmp2)
-                    class_out <= 2'd1;
-                else
-                    class_out <= 2'd2;
-                valid_out <= 1'b1;
+            end else begin
+                feature_value = $signed({1'b0, data_reg[feature_idx*COUNT_WIDTH +: COUNT_WIDTH]});
+                acc_work = acc + (feature_value * weights[(class_idx * IN_FEATURES) + feature_idx]);
+
+                if (feature_idx == IN_FEATURES - 1) begin
+                    if (class_idx == 0)
+                        score0 <= acc_work;
+                    else if (class_idx == 1)
+                        score1 <= acc_work;
+                    else
+                        score2 <= acc_work;
+
+                    if (class_idx == 2) begin
+                        if (score0 >= score1 && score0 >= acc_work)
+                            class_out <= 2'd0;
+                        else if (score1 >= acc_work)
+                            class_out <= 2'd1;
+                        else
+                            class_out <= 2'd2;
+                        valid_out <= 1'b1;
+                        busy <= 1'b0;
+                    end else begin
+                        class_idx <= class_idx + 1'b1;
+                        feature_idx <= 0;
+                        acc <= bias[class_idx + 1'b1];
+                    end
+                end else begin
+                    feature_idx <= feature_idx + 1'b1;
+                    acc <= acc_work;
+                end
             end
         end
     end
 endmodule
-

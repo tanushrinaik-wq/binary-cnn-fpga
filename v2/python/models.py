@@ -40,6 +40,7 @@ class BinarizedConv2d(nn.Conv2d):
         return w_sign * alpha
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = SignSTE.apply(x)
         return F.conv2d(
             x,
             self._binarized_weight(),
@@ -210,4 +211,3 @@ def model_size_mb(model: nn.Module) -> float:
     for tensor in model.state_dict().values():
         total_bytes += tensor.numel() * tensor.element_size()
     return total_bytes / (1024 * 1024)
-

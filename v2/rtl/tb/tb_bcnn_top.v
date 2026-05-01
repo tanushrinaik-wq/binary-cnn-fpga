@@ -14,6 +14,7 @@ module tb_bcnn_top;
     integer correct;
     integer total;
     integer watchdog;
+    integer watchdog_limit;
 
     bcnn_top dut (
         .clk(clk),
@@ -40,6 +41,7 @@ module tb_bcnn_top;
         pixel_valid = 0;
         correct = 0;
         total = 0;
+        watchdog_limit = 3000000;
         #100;
         rst = 0;
 
@@ -51,11 +53,11 @@ module tb_bcnn_top;
             end
             pixel_valid = 0;
             watchdog = 0;
-            while (!result_valid && watchdog < (64*64*3 + 10000)) begin
+            while (!result_valid && watchdog < watchdog_limit) begin
                 @(posedge clk);
                 watchdog = watchdog + 1;
             end
-            if (watchdog >= (64*64*3 + 10000)) begin
+            if (watchdog >= watchdog_limit) begin
                 $display("TIMEOUT on image %0d", image_idx);
                 $finish;
             end
@@ -70,4 +72,3 @@ module tb_bcnn_top;
         $finish;
     end
 endmodule
-

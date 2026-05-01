@@ -46,7 +46,6 @@ module bcnn_top(
         .IMG_W(32),
         .IMG_H(32),
         .WEIGHT_FILE("../../weights/bconv2_dw_weights_packed.hex"),
-        .THRESH_FILE("../../weights/bconv2_bn_threshold.hex"),
         .WORD_COUNT(9)
     ) bconv2_dw_inst (
         .clk(clk),
@@ -88,7 +87,6 @@ module bcnn_top(
         .IMG_W(16),
         .IMG_H(16),
         .WEIGHT_FILE("../../weights/bconv3_dw_weights_packed.hex"),
-        .THRESH_FILE("../../weights/bconv3_bn_threshold.hex"),
         .WORD_COUNT(18)
     ) bconv3_dw_inst (
         .clk(clk),
@@ -130,7 +128,6 @@ module bcnn_top(
         .IMG_W(8),
         .IMG_H(8),
         .WEIGHT_FILE("../../weights/bconv4_dw_weights_packed.hex"),
-        .THRESH_FILE("../../weights/bconv4_bn_threshold.hex"),
         .WORD_COUNT(36)
     ) bconv4_dw_inst (
         .clk(clk),
