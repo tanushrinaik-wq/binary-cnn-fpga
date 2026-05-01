@@ -1,0 +1,28 @@
+BCNN v2 estimated on-chip memory budget
+
+Assumptions:
+- Weight precision follows the exported formats in `v2/weights`
+- `conv1` weights are int8
+- Binary layers store 1-bit weights
+- FC weights and BN thresholds use Q8.8 signed 16-bit
+- M9K capacity assumed as 9,216 bits per block
+
+Layer                Weight bits   ROM words estimate   M9K blocks
+conv1                6912          864 x 8-bit          1
+bconv2_dw            288           9 x 32-bit           1
+bconv2_pw            2048          64 x 32-bit          1
+bconv3_dw            576           18 x 32-bit          1
+bconv3_pw            8192          256 x 32-bit         1
+bconv4_dw            1152          36 x 32-bit          1
+bconv4_pw            32768         1024 x 32-bit        4
+fc                   12288         768 x 16-bit         2
+BN thresholds total  7680          480 x 16-bit         1
+TOTAL                71904         -                    13
+
+Result:
+- Estimated total M9K usage: 13 blocks
+- Available M9K blocks on EP4CE115F29C7: 432
+- Budget status: PASS
+
+Fallback if future revisions grow beyond budget:
+- Reduce `bconv4_pw` output channels from 256 to 128
