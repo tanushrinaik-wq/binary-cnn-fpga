@@ -2,10 +2,10 @@
 
 ## Team Members:
 
-27230 Tanushri Naik(tanushrinaik@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
-26514 Mehuli Chatterjee(mehulic@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
-26020 Rayaan Ghosh(rayaanghosh@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
-25887 Ayush Sagar(ayushsagar@iisc.ac.in), MTech-CFTI in RAS 1st year(RBCCPS)
+- 27230 Tanushri Naik(tanushrinaik@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
+- 26514 Mehuli Chatterjee(mehulic@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
+- 26020 Rayaan Ghosh(rayaanghosh@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
+- 25887 Ayush Sagar(ayushsagar@iisc.ac.in), MTech-CFTI in RAS 1st year(RBCCPS)
 
 # EdgeProbe: Binary CNN FPGA Accelerator
 
