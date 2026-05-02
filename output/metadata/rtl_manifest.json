@@ -1,0 +1,134 @@
+{
+  "image": {
+    "H": 32,
+    "W": 32,
+    "C": 1,
+    "pixel_bin_thr": 128
+  },
+  "layer1": {
+    "filters": 8,
+    "kernel": 3,
+    "N": 9,
+    "count_width": 4,
+    "thresholds": [
+      4,
+      6,
+      5,
+      6,
+      4,
+      7,
+      5,
+      5
+    ],
+    "flip_flags": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "weight_bits": 72,
+    "files": {
+      "weights": "hex/conv1_weights.hex",
+      "thresh": "hex/conv1_thresh.hex",
+      "flip": "hex/conv1_flip.mif"
+    },
+    "alpha": [
+      0.10184799879789352,
+      0.1262899935245514,
+      0.09941700100898743,
+      0.10682199895381927,
+      0.12580500543117523,
+      0.14412200450897217,
+      0.14058800041675568,
+      0.17032599449157715
+    ]
+  },
+  "layer2": {
+    "filters": 16,
+    "kernel": 3,
+    "N": 72,
+    "count_width": 7,
+    "thresholds": [
+      38,
+      38,
+      36,
+      37,
+      38,
+      37,
+      37,
+      37,
+      36,
+      40,
+      33,
+      36,
+      37,
+      36,
+      34,
+      39
+    ],
+    "flip_flags": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "weight_bits": 1152,
+    "files": {
+      "weights": "hex/conv2_weights.hex",
+      "thresh": "hex/conv2_thresh.hex",
+      "flip": "hex/conv2_flip.mif"
+    },
+    "alpha": [
+      0.08836600184440613,
+      0.08421999961137772,
+      0.07438399642705917,
+      0.09273400157690048,
+      0.07555299997329712,
+      0.07734300196170807,
+      0.0800120010972023,
+      0.07792499661445618,
+      0.08832500129938126,
+      0.09590200334787369,
+      0.08329100161790848,
+      0.07590600103139877,
+      0.0819770023226738,
+      0.08866100013256073,
+      0.08891800045967102,
+      0.09062399715185165
+    ]
+  },
+  "dense": {
+    "in_features": 16,
+    "out_features": 2,
+    "fixed_point": {
+      "format": "Q8.8",
+      "scale": 256,
+      "type": "int16",
+      "clipping": [
+        -32768,
+        32767
+      ]
+    },
+    "files": {
+      "w0": "hex/dense_w0.hex",
+      "w1": "hex/dense_w1.hex",
+      "b": "hex/dense_b.hex"
+    }
+  }
+}

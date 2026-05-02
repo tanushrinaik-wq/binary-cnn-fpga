@@ -1,0 +1,12 @@
+// Golden expected outputs for RTL testbench
+// Format: img_index  gt_label  expected_pred
+00  0  1
+01  0  1
+02  0  1
+03  0  1
+04  0  1
+05  1  1
+06  1  1
+07  1  1
+08  1  1
+09  1  1

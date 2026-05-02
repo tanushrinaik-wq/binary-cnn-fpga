@@ -1,0 +1,29 @@
+EdgeProbe: Investigating Binary Neural Network Acceleration on a Constrained FPGA
+From Knowledge Distillation to Streaming Hardware Inference
+
+Team Members:
+27230  Tanushri Naik(tanushrinaik@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
+26514  Mehuli Chatterjee(mehulic@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
+26020  Rayaan Ghosh(rayaanghosh@iisc.ac.in), MTech in RAS 1st year(RBCCPS)
+25887  Ayush Sagar(ayushsagar@iisc.ac.in), MTech-CFTI in RAS 1st year(RBCCPS)
+
+Project Description:
+
+EdgeProbe is an end-to-end Edge AI project showcasing the training of a lightweight Binary Convolutional Neural Network (BCNN) in software and its deployment as a real-time hardware accelerator on an FPGA. The objective of the project is to reduce computation cost, power consumption and latency for edge devices by replacing the traditional floating-point CNN operations with efficient binary operations like XNOR and popcount.
+
+The workflow starts with training a small BCNN student model for the Rock-Paper-Scissors dataset with Straight-Through Estimator (STE) based binarization and Knowledge Distillation from a high-accuracy MobileNetV2 teacher network. The trained binary weights are then exported to Verilog compatible memory files and implemented on an Intel/Altera Cyclone IV FPGA.
+
+On hardware, the accelerator receives image data through SPI, converts grayscale pixels into binary form, performs two layers of binary convolution using XNOR + popcount logic, applies global average pooling and fixed-point classification, and outputs a final prediction in a streaming pipeline.
+
+Contributions:
+
+27230  Tanushri Naik - Implemented the Python reference models for binary convolutions and the software-side validation flow aligned with XNOR-popcount inference.
+26514  Mehuli Chatterjee - Developed the initial knowledge distillation pipeline, including the teacher-student training setup for the BCNN workflow.
+26020  Rayaan Ghosh - Built the initial model-training pipeline in Colab and designed the SPI pipeline, pixel binarization stage, and finite state machine control flow for the hardware path.
+25887  Ayush Sagar - Integrated the Verilog design, wrote the XNOR-popcount RTL modules, and handled ModelSim verification testbench development and waveform visualization.
+
+
+
+GitHub Link:
+
+https://github.com/tanushrinaik-wq/binary-cnn-fpga/tree/main

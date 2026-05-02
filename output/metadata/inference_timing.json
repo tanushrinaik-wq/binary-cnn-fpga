@@ -1,0 +1,15 @@
+{
+  "n_runs": 200,
+  "device": "CPU",
+  "float_keras_ms": {
+    "mean": 16.0744,
+    "std": 1.4302
+  },
+  "sw_binary_ms": {
+    "mean": 7.1023,
+    "std": 1.0077
+  },
+  "sw_speedup": 2.263,
+  "fpga_target_ms": null,
+  "fpga_speedup_vs_sw": null
+}
