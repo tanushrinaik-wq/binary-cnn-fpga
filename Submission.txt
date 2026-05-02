@@ -26,4 +26,4 @@ Contributions:
 
 GitHub Link:
 
-https://github.com/tanushrinaik-wq/binary-cnn-fpga/tree/main
+https://github.com/tanushrinaik-wq/binary-cnn-fpga
