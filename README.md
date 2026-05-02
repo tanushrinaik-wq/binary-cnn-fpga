@@ -193,8 +193,6 @@ To take the design beyond simulation:
 
 - `docs/README.md`: documentation index
 - `docs/project_description.md`: concise project overview
-- `docs/SPEC.md`: intended design and workflow requirements
-- `docs/STATUS.md`: current implementation status and known gaps
 - `docs/RTL Design Doc.md`: module-by-module RTL explanation
 - `REPORT.md`: course submission report
 
