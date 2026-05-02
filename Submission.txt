@@ -9,11 +9,11 @@ Team Members:
 
 Project Description:
 
-EdgeProbe is an end-to-end Edge AI project showcasing the training of a lightweight Binary Convolutional Neural Network (BCNN) in software and its deployment as a real-time hardware accelerator on an FPGA. The objective of the project is to reduce computation cost, power consumption and latency for edge devices by replacing the traditional floating-point CNN operations with efficient binary operations like XNOR and popcount.
+EdgeProbe is an investigative Edge AI project focused on studying whether Binary Convolutional Neural Networks (BCNNs) can provide a practical efficiency advantage for constrained edge-style inference when compared with conventional floating-point software execution. Instead of claiming a completed on-board deployment, this project evaluates the idea through a combined software-training, export, and RTL-simulation workflow, with emphasis on model compression, binary arithmetic, and latency-oriented analysis.
 
-The workflow starts with training a small BCNN student model for the Rock-Paper-Scissors dataset with Straight-Through Estimator (STE) based binarization and Knowledge Distillation from a high-accuracy MobileNetV2 teacher network. The trained binary weights are then exported to Verilog compatible memory files and implemented on an Intel/Altera Cyclone IV FPGA.
+The workflow starts with the Rock-Paper-Scissors dataset, which is remapped into a binary classification task and used to train a compact BCNN student model with Straight-Through Estimator (STE) based binarization and Knowledge Distillation from a MobileNetV2 teacher network. The trained binary parameters are then exported into Verilog-compatible `.hex` and `.mif` files, along with software reference artifacts used to align the machine-learning pipeline with the RTL inference flow.
 
-On hardware, the accelerator receives image data through SPI, converts grayscale pixels into binary form, performs two layers of binary convolution using XNOR + popcount logic, applies global average pooling and fixed-point classification, and outputs a final prediction in a streaming pipeline.
+The hardware side of the project is framed as a simulation-first study targeting a Cyclone IV style accelerator architecture rather than a completed FPGA board deployment. The RTL path models SPI-based image ingestion, pixel binarization, XNOR-popcount convolution, pooling, and final classification in ModelSim. The final analysis is based on generated simulation artifacts and CPU timing comparisons, including float Keras inference versus software binary inference, to investigate the expected edge-efficiency benefits and practical design trade-offs.
 
 Contributions:
 
